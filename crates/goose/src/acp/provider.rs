@@ -286,7 +286,7 @@ impl Provider for AcpProvider {
     }
 
     async fn update_mode(&self, session_id: &str, mode: GooseMode) -> Result<(), ProviderError> {
-        let _acp_session_id = self
+        let acp_session_id = self
             .goose_to_acp_id
             .lock()
             .await
@@ -296,18 +296,21 @@ impl Provider for AcpProvider {
                 ProviderError::RequestFailed(format!("Session not found: {session_id}"))
             })?;
 
-        let current = self
+        self.send_untyped(
+            "session/set_mode",
+            serde_json::json!({
+                "sessionId": acp_session_id,
+                "modeId": mode.to_string().to_lowercase()
+            }),
+        )
+        .await
+        .map_err(|e| ProviderError::RequestFailed(format!("Failed to set mode: {e}")))?;
+
+        let mut current = self
             .goose_mode
             .lock()
-            .map_err(|_| ProviderError::RequestFailed("Failed to read mode".into()))?;
-
-        if mode != *current {
-            // TODO: "session/set_mode" when session-scoped mode lands (#7603)
-            return Err(ProviderError::RequestFailed(format!(
-                "Mode change not supported: session is {}, requested {}",
-                current, mode
-            )));
-        }
+            .map_err(|_| ProviderError::RequestFailed("Failed to update mode".into()))?;
+        *current = mode;
         Ok(())
     }
 
